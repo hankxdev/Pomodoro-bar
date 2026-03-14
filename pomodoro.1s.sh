@@ -1,6 +1,7 @@
 #!/bin/bash
 
 STATE="/tmp/pomodoro_state"
+PAUSE_FILE="/tmp/pomodoro_paused_left"
 LOG="$HOME/pomodoro_log.csv"
 
 WORK=1500
@@ -15,6 +16,7 @@ osascript -e "display notification \"$1\" with title \"Pomodoro\" sound name \"G
 
 init(){
 echo "work,1,$(now),running" > $STATE
+rm -f "$PAUSE_FILE"
 }
 
 if [ ! -f "$STATE" ]; then
@@ -92,9 +94,17 @@ FOCUS_M=$(((FOCUS_SEC%3600)/60))
 echo "Today 🍅: $COUNT"
 echo "Focus time: ${FOCUS_H}h${FOCUS_M}m"
 
-REMAIN_CYCLES=$((4-ROUND))
-
-REMAIN_TIME=$((LEFT + REMAIN_CYCLES*(WORK+SHORT) + LONG))
+if [ "$MODE" = "work" ]; then
+  REMAIN_CYCLES=$((4-ROUND))
+  if [ $REMAIN_CYCLES -lt 0 ]; then REMAIN_CYCLES=0; fi
+  REMAIN_TIME=$((LEFT + REMAIN_CYCLES*(WORK+SHORT) + LONG))
+elif [ "$MODE" = "short" ]; then
+  REMAIN_CYCLES=$((4-ROUND-1))
+  if [ $REMAIN_CYCLES -lt 0 ]; then REMAIN_CYCLES=0; fi
+  REMAIN_TIME=$((LEFT + (REMAIN_CYCLES+1)*WORK + REMAIN_CYCLES*SHORT + LONG))
+else
+  REMAIN_TIME=$LEFT
+fi
 
 FINISH=$(date -r $((CURRENT+REMAIN_TIME)) +"%H:%M")
 
@@ -112,27 +122,55 @@ echo "Skip | bash='$0' param1=skip terminal=false refresh=true"
 echo "Reset | bash='$0' param1=reset terminal=false refresh=true"
 
 echo "---"
-echo "Open Log | bash='open $LOG' terminal=false"
+echo "Open Log | bash='open' param1='$LOG' terminal=false"
 
 case "$1" in
 
 pause)
 IFS=',' read MODE ROUND START STATUS < $STATE
+case $MODE in
+  work) P_DUR=$WORK;;
+  short) P_DUR=$SHORT;;
+  long) P_DUR=$LONG;;
+esac
+P_ELAPSED=$(($(now)-START))
+P_LEFT=$((P_DUR-P_ELAPSED))
+if [ $P_LEFT -lt 0 ]; then P_LEFT=0; fi
+echo "$P_LEFT" > "$PAUSE_FILE"
 echo "$MODE,$ROUND,$START,paused" > $STATE
 ;;
 
 resume)
 IFS=',' read MODE ROUND START STATUS < $STATE
-echo "$MODE,$ROUND,$(now),running" > $STATE
+case $MODE in
+  work) R_DUR=$WORK;;
+  short) R_DUR=$SHORT;;
+  long) R_DUR=$LONG;;
+esac
+SAVED_LEFT=$(cat "$PAUSE_FILE" 2>/dev/null || echo "")
+if [ -n "$SAVED_LEFT" ] && [ "$SAVED_LEFT" -gt 0 ] 2>/dev/null; then
+  NEW_START=$(($(now)-R_DUR+SAVED_LEFT))
+else
+  NEW_START=$(now)
+fi
+echo "$MODE,$ROUND,$NEW_START,running" > $STATE
+rm -f "$PAUSE_FILE"
 ;;
 
 skip)
 IFS=',' read MODE ROUND START STATUS < $STATE
-echo "$MODE,$ROUND,0,running" > $STATE
+case $MODE in
+  work) S_DUR=$WORK;;
+  short) S_DUR=$SHORT;;
+  long) S_DUR=$LONG;;
+esac
+PAST=$(($(now)-S_DUR-1))
+echo "$MODE,$ROUND,$PAST,running" > $STATE
+rm -f "$PAUSE_FILE"
 ;;
 
 reset)
-rm "$STATE"
+rm -f "$STATE" "$PAUSE_FILE"
 ;;
 
 esac

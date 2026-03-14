@@ -22,6 +22,18 @@ All data is stored locally. No tracking, no external dependencies.
 
 ---
 
+# Screenshots
+
+Menu bar timer state:
+
+![Pomodoro bar timer](./Pomodoro-bar.png)
+
+Expanded menu with controls and stats:
+
+![Pomodoro bar menu](./Pomodoro-bar-menu.png)
+
+---
+
 # Requirements
 
 * macOS
